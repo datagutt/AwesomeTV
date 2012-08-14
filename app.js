@@ -167,7 +167,7 @@ function downloadIfNotExists(show, needed, res){
 	if(needed[1] < 10){
 		needed[1] = '0' + needed[1];
 	}
-	parser.parseUrl('http://eztv.ptain.info/cgi-bin/eztv.pl?name=' + show, function findTorrent(error, meta, articles){
+	parser.parseUrl('http://eztv.ptain.info/cgi-bin/eztv.pl?name=' + encodeURIComponent(show), function findTorrent(error, meta, articles){
 		if(error){
 			console.log(error);
 		}else if(articles.length == 0){
