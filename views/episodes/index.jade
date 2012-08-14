@@ -1,7 +1,7 @@
 extends ../layout
 
 block content
-	h1 Episodes for #{showName}
-	#shows
+	h2 Episodes for #{showName}
+	#shows(data-name="#{showName}")
 		for ep in eps
 			include episode

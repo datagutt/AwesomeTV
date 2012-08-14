@@ -1,3 +1,7 @@
 .ep
-	h2= ep.name
-	<p>Season #{ep.season}, Episode #{ep.number}</p>
+	h3 #{ep.name} (Season #{ep.season}, Episode #{ep.number})
+	if currentDate > ep.airDate
+		button(class='download', data-ep='S#{ep.season}E#{ep.number}') Download this episode
+	else
+		span(class='aired')
+			b Not aired yet!

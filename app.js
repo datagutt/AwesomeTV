@@ -33,7 +33,8 @@ var Show = function Show(name){
 		tvdbID: {type: Number},
 		name: {type: String},
 		number: {type: Number, default: 1},
-		season: {type: Number, default: 1}
+		season: {type: Number, default: 1},
+		airDate: {type: Date}
 	});
 	this.name = name;
 }
@@ -73,11 +74,12 @@ Show.prototype.fetchEpisodes = function fetchEpisodes(tvdbID, res){
 			instance.name = episode.EpisodeName;
 			instance.season = episode.Season;
 			instance.number = episode.Episode;
-			self.addEpisode(instance.tvdbID, instance.name, instance.season, instance.number, res);
+			instance.airDate = episode.FirstAired;
+			self.addEpisode(instance.tvdbID, instance.name, instance.season, instance.number, instance.airDate, res);
 		});
 	});
 }
-Show.prototype.addEpisode = function addEpisode(tvdbID, name, season, number, res){
+Show.prototype.addEpisode = function addEpisode(tvdbID, name, season, number, airDate, res){
 	var myModel = mongoose.model('episodes', this.schema);
 	var instance = new myModel();
 	instance.show = this.name;
@@ -85,6 +87,7 @@ Show.prototype.addEpisode = function addEpisode(tvdbID, name, season, number, re
 	instance.name = name;
 	instance.season = season;
 	instance.number = number;
+	instance.airDate = airDate;
 	instance.save(function(){
 		res.send('<meta http-equiv="refresh" content="0">');
 	});
@@ -149,47 +152,55 @@ function addShow(name, res){
 		res.send('{type: \'error\', message: \'Name or IMDB ID not specified.\'}');
 	}
 }
-function downloadIfNotExists(show, needed){
+function downloadIfNotExists(show, needed, res){
 	var parser = new FeedParser(), link;
 	if(!needed || !show){
 		throw new Error('No arguments specified!');
 	}
 	// Ugly hax
-	needed = needed.split('x');
+	needed = needed.replace('S', '').split('E');
 	needed[0] = parseInt(needed[0], 10);
 	needed[1] = parseInt(needed[1], 10);
+	if(needed[0] < 10){
+		needed[0] = '0' + needed[0];
+	}
+	if(needed[1] < 10){
+		needed[1] = '0' + needed[1];
+	}
 	console.log(needed);
-	parser.parseUrl('http://www.ezrss.it/search/index.php?show_name=' + show + '&mode=rss', function findTorrent(error, meta, articles){
+	parser.parseUrl('http://eztv.ptain.info/cgi-bin/eztv.pl?name=' + show, function findTorrent(error, meta, articles){
 		if(error){
 			console.log(error);
 		}else if(articles.length == 0){
-			console.log('No torrents found. This might be an invalid show or episode, or EZRSS might be down.';
+			console.log('No torrents found. This might be an invalid show or episode, or eztv.ptain.info might be down.');
 		}else{
 			// Abuse of every (http://stackoverflow.com/questions/6260756/how-to-stop-javascript-foreach)
 			articles.every(function (article){
-				var title = article.title.match(/(\d*)x(\d*)/);
+				var title = article.title.match(/S(\d*)E(\d*)/);
 				var link = article.link;
 				if(title){
 					var season = title[1];
 					var episode = title[2];
 					if(needed && needed[0] == season && needed[1] == episode){
-						callback(link);
+						callback(link, res);
 						return false;
 					}
 				}
 				return true;
 			});
-			function callback(link){
+			function callback(link, res){
 				if(link){
-					download(link);
+					console.log('Starting download...');
+					download(link, res);
 				}else{
-					console.log('Could not find ' + needed.join('x') + ' for show ' + show);
+					console.log('Could not find S' + needed.join('E') + ' for show ' + show);
+					res.send('Could not find S' + needed.join('E') + ' for show ' + show);
 				}
 			}
 		}
 	});
 }
-function download(fileURL){
+function download(fileURL, res){
 	if(config['torrent'] && config['torrent']['dir']){
 		var torrentDir = config['torrent']['dir'];
 		var options = {
@@ -197,14 +208,20 @@ function download(fileURL){
 			port: 80,
 			path: url.parse(fileURL).pathname
 		};
-		var fileName = url.parse(fileURL).pathname.split('/').pop();
+		var fileName = url.parse(fileURL).pathname.match(/[^\/]+$/)[0];
+		if(fileName == ''){
+			console.log('File name is empty! Aborting...');
+			return;
+		}
 		var file = fs.createWriteStream(torrentDir + fileName);
-		http.get(options, function(res) {
-			res.on('data', function(data) {
+		console.log('Downloading...');
+		http.get(options, function(_res) {
+			_res.on('data', function(data) {
 				file.write(data);
 			}).on('end', function() {
 				file.end();
 				console.log(fileName + ' downloaded to ' + torrentDir);
+				res.send(fileName + ' downloaded to ' + torrentDir);
 			});
 		});
 	}
@@ -216,8 +233,10 @@ app.get('/', function(req, res){
 });
 app.get('/show/:show', function(req, res){
 	var show = new Show(req.params.show);
+	var dt = new Date();
+	var date = dt.getTime();
 	show.getEpisodes(function(eps){
-		res.render('episodes', {showName: req.params.show, eps: eps})
+		res.render('episodes', {showName: req.params.show, eps: eps, currentDate : date})
 	}, res);
 });
 // API
@@ -234,8 +253,7 @@ app.get('/api/addShow/:name', function(req, res){
 });
 app.get('/api/download/:show/:episode', function(req, res){
 	if(req && req.params.show && req.params.episode){
-		downloadIfNotExists(req.params.show, req.params.episode);
-		res.send('Downloading...');
+		downloadIfNotExists(req.params.show, req.params.episode, res);
 	}
 });
 app.listen(1337, function(){
