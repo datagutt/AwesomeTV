@@ -1,8 +1,12 @@
 var express = require('express'),
+http = require('http'),
 mongoose = require('mongoose'),
 TVDB = require('tvdb'),
-jade = require('jade');
-app = express.createServer();
+jade = require('jade'),
+FeedParser = require('feedparser'),
+url = require('url'),
+fs = require('fs');
+app = express();
 app.set('views', __dirname + '/views');
 app.set('view engine', 'jade');
 app.set('view options', {layout:true});
@@ -145,6 +149,66 @@ function addShow(name, res){
 		res.send('{type: \'error\', message: \'Name or IMDB ID not specified.\'}');
 	}
 }
+function downloadIfNotExists(show, needed){
+	var parser = new FeedParser(), link;
+	if(!needed || !show){
+		throw new Error('No arguments specified!');
+	}
+	// Ugly hax
+	needed = needed.split('x');
+	needed[0] = parseInt(needed[0], 10);
+	needed[1] = parseInt(needed[1], 10);
+	console.log(needed);
+	parser.parseUrl('http://www.ezrss.it/search/index.php?show_name=' + show + '&mode=rss', function findTorrent(error, meta, articles){
+		if(error){
+			console.log(error);
+		}else if(articles.length == 0){
+			console.log('No torrents found. This might be an invalid show or episode, or EZRSS might be down.';
+		}else{
+			// Abuse of every (http://stackoverflow.com/questions/6260756/how-to-stop-javascript-foreach)
+			articles.every(function (article){
+				var title = article.title.match(/(\d*)x(\d*)/);
+				var link = article.link;
+				if(title){
+					var season = title[1];
+					var episode = title[2];
+					if(needed && needed[0] == season && needed[1] == episode){
+						callback(link);
+						return false;
+					}
+				}
+				return true;
+			});
+			function callback(link){
+				if(link){
+					download(link);
+				}else{
+					console.log('Could not find ' + needed.join('x') + ' for show ' + show);
+				}
+			}
+		}
+	});
+}
+function download(fileURL){
+	if(config['torrent'] && config['torrent']['dir']){
+		var torrentDir = config['torrent']['dir'];
+		var options = {
+			host: url.parse(fileURL).host,
+			port: 80,
+			path: url.parse(fileURL).pathname
+		};
+		var fileName = url.parse(fileURL).pathname.split('/').pop();
+		var file = fs.createWriteStream(torrentDir + fileName);
+		http.get(options, function(res) {
+			res.on('data', function(data) {
+				file.write(data);
+			}).on('end', function() {
+				file.end();
+				console.log(fileName + ' downloaded to ' + torrentDir);
+			});
+		});
+	}
+}
 app.get('/', function(req, res){
 	var shows = getShows(function(shows){
 		res.render('shows', {shows: shows});
@@ -166,6 +230,12 @@ app.get('/api/getShow/:show', function(req, res){
 app.get('/api/addShow/:name', function(req, res){
 	if(req && req.params.name){
 		addShow(req.params.name, res);
+	}
+});
+app.get('/api/download/:show/:episode', function(req, res){
+	if(req && req.params.show && req.params.episode){
+		downloadIfNotExists(req.params.show, req.params.episode);
+		res.send('Downloading...');
 	}
 });
 app.listen(1337, function(){
