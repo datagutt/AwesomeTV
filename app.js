@@ -3,7 +3,6 @@ http = require('http'),
 mongoose = require('mongoose'),
 TVDB = require('tvdb'),
 jade = require('jade'),
-FeedParser = require('feedparser'),
 url = require('url'),
 fs = require('fs');
 app = express();
@@ -15,6 +14,7 @@ app.configure(function(){
 	app.use(app.router);
 });
 var config = require('./config.js').config;
+var providers = config['providers'] ? config['providers'] : ['ezrss', 'ezfallback'];
 if(config){
 	try{
 		mongoose.connect('mongodb://' + config['db']['host'] + '/' + config['db']['database'] + '');
@@ -92,6 +92,7 @@ Show.prototype.addEpisode = function addEpisode(tvdbID, name, season, number, ai
 		res.send('<meta http-equiv="refresh" content="0">');
 	});
 }
+
 function getShow(name, callback){
 	var mySchema = new Schema({
 		name: {type: String},
@@ -152,53 +153,6 @@ function addShow(name, res){
 		res.send('{type: \'error\', message: \'Name or IMDB ID not specified.\'}');
 	}
 }
-function downloadIfNotExists(show, needed, res){
-	var parser = new FeedParser(), link;
-	if(!needed || !show){
-		throw new Error('No arguments specified!');
-	}
-	// Ugly hax
-	needed = needed.replace('S', '').split('E');
-	needed[0] = parseInt(needed[0], 10);
-	needed[1] = parseInt(needed[1], 10);
-	if(needed[0] < 10){
-		needed[0] = '0' + needed[0];
-	}
-	if(needed[1] < 10){
-		needed[1] = '0' + needed[1];
-	}
-	parser.parseUrl('http://eztv.ptain.info/cgi-bin/eztv.pl?name=' + encodeURIComponent(show), function findTorrent(error, meta, articles){
-		if(error){
-			console.log(error);
-		}else if(articles.length == 0){
-			console.log('No torrents found. This might be an invalid show or episode, or eztv.ptain.info might be down.');
-		}else{
-			// Abuse of every (http://stackoverflow.com/questions/6260756/how-to-stop-javascript-foreach)
-			articles.every(function (article){
-				var title = article.title.match(/S(\d*)E(\d*)/);
-				var link = article.link;
-				if(title){
-					var season = title[1];
-					var episode = title[2];
-					if(needed && needed[0] == season && needed[1] == episode){
-						callback(link, res);
-						return false;
-					}
-				}
-				return true;
-			});
-			function callback(link, res){
-				if(link){
-					console.log('Starting download...');
-					download(link, res);
-				}else{
-					console.log('Could not find S' + needed.join('E') + ' for show ' + show);
-					res.send('Could not find S' + needed.join('E') + ' for show ' + show);
-				}
-			}
-		}
-	});
-}
 function download(fileURL, res){
 	if(config['torrent'] && config['torrent']['dir']){
 		var torrentDir = config['torrent']['dir'];
@@ -252,7 +206,23 @@ app.get('/api/addShow/:name', function(req, res){
 });
 app.get('/api/download/:show/:episode', function(req, res){
 	if(req && req.params.show && req.params.episode){
-		downloadIfNotExists(req.params.show, req.params.episode, res);
+		providers.every(function(provider){
+			var r = require('./providers/' + provider + '.js');
+			var provider = new r[provider](res);
+			if(typeof provider.getTorrent == 'function'){
+				provider.getTorrent(req.params.show, req.params.episode, function(link){
+					if(link){
+						console.log('Starting download...');
+						download(link, res);
+						return false;
+					}else{
+						console.log('Could not find S' + needed.join('E') + ' for show ' + show);
+						res.send('Could not find S' + needed.join('E') + ' for show ' + show);
+					}
+				});
+			}
+			return true;
+		});
 	}
 });
 app.listen(1337, function(){
