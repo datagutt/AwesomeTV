@@ -1,4 +1,3 @@
-
 var FeedParser = require('feedparser');
 var Provider = function(res){
 	this.res = res;
@@ -33,7 +32,6 @@ Provider.prototype.getTorrent = function getTorrent(show, needed, callback){
 		}else{
 			// Abuse of every (http://stackoverflow.com/questions/6260756/how-to-stop-javascript-foreach)
 			articles.every(function(article){
-			console.log(article);
 				var title = article.title.match(self.titleRegex);
 				var link = article.link;
 				if(title){

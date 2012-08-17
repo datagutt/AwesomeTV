@@ -53,7 +53,7 @@ Show.prototype.getEpisodes = function getEpisodes(callback, res){
 			if(eps.length == 0){
 				self.fetchEpisodes(self.tvdbID, res);
 			}else{
-				// Sort using airDate
+				// Sort using tvdbID
 				var sortedEps = eps.sort(function(ep, ep2){
 					return ep.tvdbID - ep2.tvdbID;
 				});
