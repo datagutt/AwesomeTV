@@ -14,7 +14,7 @@ app.configure(function(){
 	app.use(app.router);
 });
 var config = require('./config.js').config;
-var providers = config['providers'] ? config['providers'] : ['ezrss', 'ezfallback'];
+var providers = config['providers'] ? config['providers'] : ['ezrss', 'ezfallback', 'dailytvtorrents'];
 if(config){
 	try{
 		mongoose.connect('mongodb://' + config['db']['host'] + '/' + config['db']['database'] + '');
@@ -44,20 +44,27 @@ Show.prototype.getEpisodes = function getEpisodes(callback, res){
 	getShow(self.name, function(show){
 		self.tvdbID = show.tvdbID;
 		var myModel = mongoose.model('episodes', self.schema);
-		var eps = [];
+		var eps = [], specials = [];
 		myModel.find({'show': self.name}, function (err, docs) {
-			docs.forEach(function(ep){
-				eps.push(ep);
-			});
 			// If this show has no episodes, fetch them.
-			if(eps.length == 0){
+			if(docs.length == 0){
 				self.fetchEpisodes(self.tvdbID, res);
 			}else{
-				// Sort using tvdbID
-				var sortedEps = eps.sort(function(ep, ep2){
-					return ep.tvdbID - ep2.tvdbID;
+				// Add everything under season 0 to 'Specials'
+				var filteredEps = docs.forEach(function(ep, i){
+					if(ep.season == 0 && ep.episode > 0){
+						specials.push(ep);
+					}else{
+						eps.push(ep);
+					}
+					if(i >= (docs.length - 1)){
+						// Sort using tvdbID
+						var sortedEps = eps.sort(function(ep, ep2){
+							return ep.tvdbID - ep2.tvdbID;
+						});
+						callback(sortedEps);
+					}
 				});
-				callback(sortedEps);
 			}
 		});
 	});
@@ -165,7 +172,12 @@ function download(fileURL, res){
 			port: 80,
 			path: url.parse(fileURL).pathname
 		};
-		var fileName = url.parse(fileURL).pathname.match(/[^\/]+$/)[0];
+		try{
+			var fileName = url.parse(fileURL).pathname.match(/[^\/]+$/)[0];
+		}catch(e){
+			console.log('File name could not be extracted! Aborting...');
+			return;
+		}
 		if(fileName == ''){
 			console.log('File name is empty! Aborting...');
 			return;

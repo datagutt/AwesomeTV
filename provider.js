@@ -5,10 +5,13 @@ var Provider = function(res){
 Provider.prototype.url = 'http://host.tld/?name=%show%';
 Provider.prototype.titleRegex = /S(\d*)E(\d*)/;
 Provider.prototype.withZero = 1;
-Provider.prototype.getTorrent = function getTorrent(show, needed, callback){
+Provider.prototype.fixTitle = function(title){
+	return encodeURIComponent(title);
+}
+Provider.prototype.getTorrent = function getTorrent(title, needed, callback){
 	var parser = new FeedParser(), link, self = this;
 	var res = self.res;
-	if(!needed || !show){
+	if(!needed || !title){
 		throw new Error('No arguments specified!');
 	}
 	// Ugly hax
@@ -24,7 +27,7 @@ Provider.prototype.getTorrent = function getTorrent(show, needed, callback){
 			needed[1] = '0' + needed[1];
 		}
 	}
-	parser.parseUrl(self.url.replace('%show%', encodeURIComponent(show)), function(error, meta, articles){
+	parser.parseUrl(self.url.replace('%show%', self.fixTitle(title)), function(error, meta, articles){
 		if(error){
 			console.log(error);
 		}else if(articles.length == 0){
@@ -32,20 +35,25 @@ Provider.prototype.getTorrent = function getTorrent(show, needed, callback){
 		}else{
 			// Abuse of every (http://stackoverflow.com/questions/6260756/how-to-stop-javascript-foreach)
 			articles.every(function(article){
-				var title = article.title.match(self.titleRegex);
-				var link = article.link;
-				if(title){
-					var season = title[1];
-					var episode = title[2];
-					if(needed && needed[0] == season && needed[1] == episode){
-						callback(link);
-						return false;
-					}
-				}
-				return true;
+				return self.parse(article, needed, callback);
 			});
 		}
 	});
+
+}
+Provider.prototype.parse = function(article, needed, callback){
+	var self = this;
+	var title = article.title.match(self.titleRegex);
+	var link = article.link;
+	if(title){	
+		var season = title[1];
+		var episode = title[2];
+		if(needed && needed[0] == season && needed[1] == episode){			
+			callback(link);
+			return false;
+		}
+	}
+	return true;
 }
 exports.FeedParser = FeedParser;
 exports.Provider = Provider;
