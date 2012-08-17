@@ -10,7 +10,6 @@ dailytvtorrents.prototype.parse = function(article, needed, callback){
 	var self = this;
 	var title = article.title.match(self.titleRegex);
 	var link = article.description.match('href="(http://[^"]*)"');
-	console.log(link);
 	if(link && link[1]){
 		link = link[1];
 	}

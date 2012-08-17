@@ -52,7 +52,7 @@ Show.prototype.getEpisodes = function getEpisodes(callback, res){
 			}else{
 				// Add everything under season 0 to 'Specials'
 				var filteredEps = docs.forEach(function(ep, i){
-					if(ep.season == 0 && ep.episode > 0){
+					if(ep.season == 0){
 						specials.push(ep);
 					}else{
 						eps.push(ep);
