@@ -38,7 +38,6 @@ var Show = function Show(name){
 	});
 	this.name = name;
 }
-//console.log(new Show('test'));
 Show.prototype.getEpisodes = function getEpisodes(callback, res){
 	var self = this;
 	getShow(self.name, function(show){
